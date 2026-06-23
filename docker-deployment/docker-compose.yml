@@ -1,0 +1,31 @@
+# =============================================================================
+# Claude Code Remote Dev Environment - Docker Compose
+# =============================================================================
+# Usage:
+#   1. Copy .env.example to .env and fill in your values
+#   2. docker compose up -d
+#   3. Open https://localhost:7681 in your browser
+# =============================================================================
+
+services:
+  claude-code:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-code-dev
+    ports:
+      - "${TTYD_PORT:-7681}:${TTYD_PORT:-7681}"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      - TTYD_PORT=${TTYD_PORT:-7681}
+      - TTYD_CREDENTIAL=${TTYD_CREDENTIAL:-}
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
+    volumes:
+      - workspace:/home/developer/workspace
+      - claude-config:/home/developer/.claude
+    restart: unless-stopped
+
+volumes:
+  workspace:
+  claude-config:
