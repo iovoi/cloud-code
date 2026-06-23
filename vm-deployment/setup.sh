@@ -84,6 +84,18 @@ else
     echo "  gcloud CLI installed."
 fi
 
+# Expose gcloud under /usr/local/bin. The systemd service runs with a minimal
+# PATH and does NOT source the apt package's path.bash.inc (interactive only),
+# so without this the service can't find gcloud to fetch secrets.
+GCLOUD_BIN="$(command -v gcloud || true)"
+[ -z "${GCLOUD_BIN}" ] && [ -x /usr/lib/google-cloud-sdk/bin/gcloud ] && GCLOUD_BIN=/usr/lib/google-cloud-sdk/bin/gcloud
+if [ -n "${GCLOUD_BIN}" ]; then
+    ln -sf "$(readlink -f "${GCLOUD_BIN}")" /usr/local/bin/gcloud
+    echo "  gcloud symlinked to /usr/local/bin/gcloud (visible to systemd)."
+else
+    echo "  WARNING: gcloud binary not found; the service may not fetch secrets."
+fi
+
 # ---------- 2. Build and install ttyd ----------
 echo "[2/8] Building ttyd from source..."
 if command -v ttyd &>/dev/null; then
