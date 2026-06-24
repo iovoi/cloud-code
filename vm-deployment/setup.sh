@@ -139,6 +139,16 @@ su - "${DEVELOPER_USER}" -c "
 "
 echo "  Claude Code CLI installed."
 
+# Provision Claude Code settings (provider/model config; no secrets live here
+# -- the auth token is injected at runtime via start.sh from Secret Manager).
+CLAUDE_CFG_DIR="/home/${DEVELOPER_USER}/.claude"
+install -d -m 700 -o "${DEVELOPER_USER}" -g "${DEVELOPER_USER}" "${CLAUDE_CFG_DIR}"
+if [ -f "${SCRIPT_DIR}/claude-settings.json" ]; then
+    install -m 600 "${SCRIPT_DIR}/claude-settings.json" "${CLAUDE_CFG_DIR}/settings.json"
+    chown "${DEVELOPER_USER}:${DEVELOPER_USER}" "${CLAUDE_CFG_DIR}/settings.json"
+    echo "  Claude Code settings provisioned to ${CLAUDE_CFG_DIR}/settings.json"
+fi
+
 # ---------- 6. Install GitHub CLI ----------
 echo "[6/8] Installing GitHub CLI..."
 if command -v gh &>/dev/null; then

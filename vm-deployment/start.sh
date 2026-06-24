@@ -74,6 +74,10 @@ fi
 
 # --- Export for child processes ---
 export ANTHROPIC_API_KEY
+# Third-party Anthropic-compatible providers (e.g. z.ai) authenticate via
+# ANTHROPIC_AUTH_TOKEN (Authorization: Bearer). Expose the same key under both
+# names so the endpoint works regardless of which header it expects.
+export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_API_KEY}"
 
 # --- Configure git (if env vars provided) ---
 if [ -n "${GIT_USER_NAME:-}" ]; then
