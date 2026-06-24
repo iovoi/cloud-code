@@ -69,32 +69,10 @@ apt-get update && apt-get install -y --no-install-recommends \
 # Locale
 locale-gen en_US.UTF-8
 
-# Install the Google Cloud CLI (needed to fetch secrets from Secret Manager at
-# runtime). Uses Google's signed apt repo.
-if command -v gcloud &>/dev/null; then
-    echo "  gcloud CLI already installed, skipping."
-else
-    install -d /usr/share/keyrings
-    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-        | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
-        > /etc/apt/sources.list.d/google-cloud-sdk.list
-    apt-get update && apt-get install -y --no-install-recommends google-cloud-cli
-    rm -rf /var/lib/apt/lists/*
-    echo "  gcloud CLI installed."
-fi
-
-# Expose gcloud under /usr/local/bin. The systemd service runs with a minimal
-# PATH and does NOT source the apt package's path.bash.inc (interactive only),
-# so without this the service can't find gcloud to fetch secrets.
-GCLOUD_BIN="$(command -v gcloud || true)"
-[ -z "${GCLOUD_BIN}" ] && [ -x /usr/lib/google-cloud-sdk/bin/gcloud ] && GCLOUD_BIN=/usr/lib/google-cloud-sdk/bin/gcloud
-if [ -n "${GCLOUD_BIN}" ]; then
-    ln -sf "$(readlink -f "${GCLOUD_BIN}")" /usr/local/bin/gcloud
-    echo "  gcloud symlinked to /usr/local/bin/gcloud (visible to systemd)."
-else
-    echo "  WARNING: gcloud binary not found; the service may not fetch secrets."
-fi
+# Secrets are fetched with curl + the metadata-server token + the Secret
+# Manager REST API (see start.sh / the tailscale step below) -- gcloud is NOT
+# used, because the google-cloud-cli snap cannot run under the ttyd unit's
+# NoNewPrivileges hardening. So nothing to install here for secret access.
 
 # ---------- 2. Build and install ttyd ----------
 echo "[2/8] Building ttyd from source..."
@@ -233,11 +211,16 @@ if [ -f "${TS_ENV_FILE}" ]; then
 fi
 
 # Resolve the Tailscale auth key from Secret Manager if a secret name is set.
-# (One-time bootstrap secret; only needed when joining the tailnet.)
+# (One-time bootstrap secret; only needed when joining the tailnet.) Uses curl
+# + the metadata token + REST API -- see start.sh for the same pattern.
 if [ -z "${TS_AUTH_KEY}" ] && [ -n "${TS_AUTH_KEY_SECRET}" ] && [ -n "${TS_PROJECT}" ]; then
-    if command -v gcloud &>/dev/null; then
-        TS_AUTH_KEY="$(gcloud secrets versions access latest \
-            --secret="${TS_AUTH_KEY_SECRET}" --project="${TS_PROJECT}" 2>/dev/null || true)"
+    TS_TOKEN="$(curl -fsS -H "Metadata-Flavor: Google" \
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+        2>/dev/null | jq -r '.access_token // empty')" || TS_TOKEN=""
+    if [ -n "${TS_TOKEN}" ]; then
+        TS_AUTH_KEY="$(curl -fsS -H "Authorization: Bearer ${TS_TOKEN}" \
+            "https://secretmanager.googleapis.com/v1/projects/${TS_PROJECT}/secrets/${TS_AUTH_KEY_SECRET}/versions/latest:access" \
+            2>/dev/null | jq -r '.payload.data // empty' | base64 -d 2>/dev/null)" || TS_AUTH_KEY=""
         [ -n "${TS_AUTH_KEY}" ] && echo "  Fetched TAILSCALE_AUTH_KEY from Secret Manager."
     fi
 fi

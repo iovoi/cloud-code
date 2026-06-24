@@ -25,9 +25,11 @@ fi
 
 # --- Helper: resolve a value from GCP Secret Manager ---
 # fetch_secret <dest_var> <secret_name>. If <secret_name> is empty, no-op
-# (the existing .env value is used). Requires GCP_PROJECT + gcloud CLI. The
-# VM's attached service account must have roles/secretmanager.secretAccessor.
-# See docs/infra/gcp-secrets.md.
+# (the existing .env value is used). Requires GCP_PROJECT. Fetches via the
+# metadata-server token + Secret Manager REST API (curl) -- NOT gcloud, because
+# gcloud is snap-installed and cannot run under this unit's NoNewPrivileges
+# hardening (snap-confine needs capabilities that get stripped). The VM's
+# attached service account must have roles/secretmanager.secretAccessor.
 fetch_secret() {
     local dest="$1" secret_name="${2:-}"
     [ -z "${secret_name}" ] && return 0
@@ -35,12 +37,19 @@ fetch_secret() {
         echo "ERROR: GCP_PROJECT is not set; needed to fetch secret '${secret_name}'." >&2
         exit 1
     fi
-    if ! command -v gcloud >/dev/null 2>&1; then
-        echo "ERROR: gcloud CLI not installed; cannot fetch secret '${secret_name}'." >&2
+    local token payload value
+    token="$(curl -fsS -H "Metadata-Flavor: Google" \
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+        2>/dev/null | jq -r '.access_token // empty')" || true
+    if [ -z "${token}" ]; then
+        echo "ERROR: could not obtain access token from the metadata server for '${secret_name}'." >&2
         exit 1
     fi
-    local value
-    if ! value="$(gcloud secrets versions access latest --secret="${secret_name}" --project="${GCP_PROJECT}" 2>/dev/null)"; then
+    payload="$(curl -fsS -H "Authorization: Bearer ${token}" \
+        "https://secretmanager.googleapis.com/v1/projects/${GCP_PROJECT}/secrets/${secret_name}/versions/latest:access" \
+        2>/dev/null)" || true
+    value="$(printf '%s' "${payload}" | jq -r '.payload.data // empty' | base64 -d 2>/dev/null)" || true
+    if [ -z "${value}" ]; then
         echo "ERROR: failed to fetch secret '${secret_name}' from Secret Manager." >&2
         echo "       Verify the VM service account has roles/secretmanager.secretAccessor." >&2
         exit 1
