@@ -73,11 +73,9 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
 fi
 
 # --- Export for child processes ---
+# z.ai accepts the key via x-api-key (ANTHROPIC_API_KEY). Do NOT also set
+# ANTHROPIC_AUTH_TOKEN -- Claude Code warns when both are set.
 export ANTHROPIC_API_KEY
-# Third-party Anthropic-compatible providers (e.g. z.ai) authenticate via
-# ANTHROPIC_AUTH_TOKEN (Authorization: Bearer). Expose the same key under both
-# names so the endpoint works regardless of which header it expects.
-export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_API_KEY}"
 
 # --- Configure git (if env vars provided) ---
 if [ -n "${GIT_USER_NAME:-}" ]; then
