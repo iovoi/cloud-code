@@ -21,7 +21,11 @@ const MAX_BODY = 1024 * 1024;
 
 fs.mkdirSync(STORE_DIR, { recursive: true });
 
-const INDEX = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+// Read index.html fresh per request so UI updates deploy without a restart.
+function readIndex() {
+  try { return fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'); }
+  catch { return '<!doctype html><title>Claude Portal</title>index.html not found'; }
+}
 
 function loadStore() {
   try { return JSON.parse(fs.readFileSync(STORE_FILE, 'utf8')); }
@@ -49,7 +53,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(INDEX);
+      return res.end(readIndex());
     }
 
     if (req.method === 'GET' && url.pathname === '/api/sessions') {
