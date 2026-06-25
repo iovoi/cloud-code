@@ -172,6 +172,18 @@ cp "${SCRIPT_DIR}/start.sh" "/home/${DEVELOPER_USER}/start.sh"
 chown "${DEVELOPER_USER}:${DEVELOPER_USER}" "/home/${DEVELOPER_USER}/start.sh"
 chmod +x "/home/${DEVELOPER_USER}/start.sh"
 
+# Install the Claude chat portal (web UI in front of `claude`).
+PORTAL_SRC="${SCRIPT_DIR}/../portal"
+if [ -d "${PORTAL_SRC}" ]; then
+    install -d -m 755 -o "${DEVELOPER_USER}" -g "${DEVELOPER_USER}" "/home/${DEVELOPER_USER}/portal"
+    install -m 644 "${PORTAL_SRC}/server.js"    "/home/${DEVELOPER_USER}/portal/server.js"
+    install -m 644 "${PORTAL_SRC}/index.html"   "/home/${DEVELOPER_USER}/portal/index.html"
+    install -m 755 "${PORTAL_SRC}/run.sh"       "/home/${DEVELOPER_USER}/portal/run.sh"
+    chown -R "${DEVELOPER_USER}:${DEVELOPER_USER}" "/home/${DEVELOPER_USER}/portal"
+    cp "${PORTAL_SRC}/claude-portal.service" /etc/systemd/system/claude-portal.service
+    echo "  Chat portal installed."
+fi
+
 # Stage the env file at the service location. Prefer the real .env from the
 # checkout (so values like ANTHROPIC_API_KEY / TAILSCALE_AUTH_KEY flow through
 # in one shot); fall back to .env.example.
@@ -254,13 +266,20 @@ if [ -n "${TS_AUTH_KEY}" ]; then
     tailscale up --auth-key="${TS_AUTH_KEY}" --hostname="${TS_HOSTNAME}"
     echo "  Configuring tailscale serve ${TS_SERVE_FLAG} -> http://localhost:${TS_TTYD_PORT}..."
     tailscale serve --bg ${TS_SERVE_FLAG} "http://localhost:${TS_TTYD_PORT}"
+    # Chat portal: second serve endpoint (HTTP on 8080 by default).
+    TS_PORTAL_PORT="${TS_PORTAL_PORT:-8080}"
+    if [ "${TS_SERVE_HTTPS}" = "true" ]; then TS_PORTAL_FLAG="--https=${TS_PORTAL_PORT}"; else TS_PORTAL_FLAG="--http=${TS_PORTAL_PORT}"; fi
+    tailscale serve --bg ${TS_PORTAL_FLAG} "http://localhost:3000" || echo "  (portal serve skipped)"
     TS_STATUS="$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // "unknown" | rtrimstr(".")')"
-    echo "  Tailscale ready. Web terminal: ${TS_SCHEME}://${TS_STATUS}"
+    echo "  Tailscale ready."
+    echo "    Web terminal: ${TS_SCHEME}://${TS_STATUS}"
+    echo "    Chat portal : ${TS_SCHEME}://${TS_STATUS}:${TS_PORTAL_PORT}"
 else
     echo ""
     echo "  NOTE: TAILSCALE_AUTH_KEY is not set. Complete Tailscale setup manually:"
     echo "    sudo tailscale up --hostname=${TS_HOSTNAME}"
     echo "    sudo tailscale serve --bg ${TS_SERVE_FLAG} http://localhost:${TS_TTYD_PORT}"
+    echo "    sudo tailscale serve --bg --http=8080 http://localhost:3000   # portal"
     echo "  (The 'tailscale up' command prints a URL to authorize this VM.)"
     echo ""
 fi

@@ -1,0 +1,27 @@
+[Unit]
+Description=Claude Chat Portal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=developer
+Group=developer
+WorkingDirectory=/home/developer/workspace
+
+Environment=PATH=/home/developer/.nvm/versions/node/current/bin:/usr/local/bin:/usr/bin:/bin
+Environment=LANG=en_US.UTF-8
+Environment=HOME=/home/developer
+
+ExecStart=/home/developer/portal/run.sh
+Restart=on-failure
+RestartSec=5
+
+# Same hardening as claude-code-ttyd. curl (key fetch) and node (claude) run
+# fine under these; claude writes under /home/developer.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/developer /tmp
+
+[Install]
+WantedBy=multi-user.target
